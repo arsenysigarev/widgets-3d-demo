@@ -1,0 +1,171 @@
+<!doctype html>
+
+<meta charset="utf-8">
+<link rel="stylesheet" type="text/css" href='css/style.css' src='css/style;.css' />
+
+<body onload="init()">
+	<div id="webgl"></div>
+
+
+<!--img src="lighting.png" id ="lighting"  width="512" height="512"/-->
+
+
+	<script type="text/javascript" src="./js/webgl-libs.js"></script>
+	<script type="text/javascript" src="./js/three.js"></script>
+
+	<script>
+		function init(){
+			// common settings	
+			const 	container = document.getElementById('webgl');					
+
+			const 	imgPath = "./img/";
+			const 	sampleRatio = 3;
+
+			const 	distance = 15,
+					WIDTH = container.clientWidth,
+					HEIGHT = container.clientHeight;
+					console.log (HEIGHT);
+			
+			const 	angle = 75,
+					aspect = WIDTH / HEIGHT,
+					near = 0.1,
+					far = 3000;
+
+
+			// linking libs and objects
+			const 	loader = new THREE.TextureLoader(),
+					scene = new THREE.Scene(),
+					renderer = new THREE.WebGLRenderer({antialiasing : true});
+
+			renderer.setSize(WIDTH, HEIGHT);
+			renderer.domElement.style.position = 'relative';
+
+			container.appendChild(renderer.domElement);
+			renderer.autoClear = false;
+		//	renderer.shadowMapEnabled = true;	
+			renderer.setPixelRatio( window.devicePixelRatio * sampleRatio );
+
+
+			const camera = new THREE.PerspectiveCamera(angle, aspect, near, far);
+			// This render pass will render the big result.
+			
+			let xStart = -1, 
+				yStart = -1, 
+				interacting = false, 
+				alpha = 0, 
+				betta = 0;
+
+			// Functions
+			function catchEvents(){
+				container.addEventListener('mousedown', onMouseDown, false);
+				container.addEventListener('mousemove', onMouseMove, false); 
+				container.addEventListener('mouseup', onMouseUp, false); 
+				container.addEventListener('mouseout', onMouseUp, false); 
+			}	
+
+			function onMouseDown(event) {
+				event.preventDefault();
+
+				interacting = true;
+				if (xStart < 0){ // only for initial drag
+					xStart = event.clientX;
+					yStart = event.clientY;
+				}
+			}
+
+			function onMouseMove(event) {
+				event.preventDefault();
+
+				if (interacting){
+					const x = xStart - event.clientX;
+					const y = yStart - event.clientY;
+				
+					betta += x/10;
+					alpha -= y/2;
+				}
+			}	
+
+			function onMouseUp(event) {
+				event.preventDefault();
+				interacting = false;
+			}
+
+			function loadTexture(fileName){
+				return loader.load(imgPath+fileName);
+			}	
+
+			function createScene(){	
+				camera.position.set(300, 00, -0);
+				camera.up = new THREE.Vector3(0,1,0);
+				camera.lookAt(new THREE.Vector3(00,00,0));
+
+				const tribunesGeometry = new THREE.CylinderGeometry(1200, 800, 1200, 18, 1, true);
+				const tribunesMaterial = new THREE.MeshBasicMaterial(); 
+				tribunesMaterial.map = loadTexture('tribunes.jpg');
+				tribunesMaterial.lights = false;
+				tribunesMaterial.side = THREE.BackSide //flip normals
+				const tribunes = new THREE.Mesh( tribunesGeometry, tribunesMaterial );
+				tribunes.position.set(-100, 100, -0); 
+				scene.add(tribunes);
+
+				const pitchGeometry = new THREE.PlaneGeometry( 600, 338 );
+				const pitchMaterial = new THREE.MeshBasicMaterial(); 
+				pitchMaterial.map = loadTexture('pitch.jpg');
+				var pitch = new THREE.Mesh( pitchGeometry, pitchMaterial );
+				pitch.position.set(-100, -150, -0); 
+				pitch.rotation.x = -Math.PI / 2;
+				pitch.rotation.z = -Math.PI / 2;	
+				scene.add( pitch );	
+
+
+				const bordersGeometry = new THREE.BoxGeometry( 600, 338, 40 );
+				const bordersMaterial = new THREE.MeshBasicMaterial(); 
+				const borders = new THREE.Mesh( bordersGeometry, bordersMaterial );
+				bordersMaterial.map = loadTexture('logo_stats.png');
+				bordersMaterial.side = THREE.BackSide //flip normals
+				bordersMaterial.wrapS = THREE.RepeatWrapping;
+				bordersMaterial.wrapT = THREE.RepeatWrapping;
+				bordersMaterial.repeat =  4;
+				borders.position.set(-100, -131, -0); 
+				borders.rotation.x = -Math.PI / 2;
+				borders.rotation.z = -Math.PI / 2;		
+				scene.add(borders);
+			}
+
+			function applyChanges(){
+				// apply limits
+				betta = Math.min(60, Math.max( betta, -60));
+				alpha = Math.min(399, Math.max( alpha, -10));
+
+				//magnet
+				if (Math.abs(betta) < 15){
+					betta =0;
+				}
+
+				// rotate
+				camera.position.set(300 - alpha, alpha>>2, betta * (399-alpha)/300);	
+				camera.up = new THREE.Vector3(0,1,0);
+				camera.lookAt(new THREE.Vector3(-alpha/4, 0, 0));
+			}
+
+			function render () {
+			const clock = new THREE.Clock(),
+					delta = clock.getDelta(); 	 
+
+				renderer.render(scene, camera);
+			}	
+
+			function update()   // Main cycle Resident funct
+			{
+				applyChanges();
+				render(); 
+				window.requestAnimationFrame(update);
+			}	
+
+			createScene();
+			catchEvents();
+			update();
+		}
+	</script>
+
+</body>
