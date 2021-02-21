@@ -14,17 +14,19 @@
 	<script type="text/javascript" src="./js/three.js"></script>
 
 	<script>
+		const SDDP_WEBSOCKET_DOMAIN_NAME = 'wta.performgroup.io';
+		const MAX_RECONNECT_ATTEMTS = 3;
+		const 	imgPath = "./img/";
+
 		function init(){
 			// common settings	
 			const 	container = document.getElementById('webgl');					
 
-			const 	imgPath = "./img/";
-			const 	sampleRatio = 3;
+			const 	sampleRatio = 2;
 
 			const 	distance = 15,
 					WIDTH = container.clientWidth,
 					HEIGHT = container.clientHeight;
-					console.log (HEIGHT);
 			
 			const 	angle = 75,
 					aspect = WIDTH / HEIGHT,
@@ -49,12 +51,54 @@
 			const camera = new THREE.PerspectiveCamera(angle, aspect, near, far);
 			// This render pass will render the big result.
 			
-			let xStart = -1, 
+			let steps = 30,
+				blocked = true,
+				faraway = 300,
+			 	xStart = -1, 
 				yStart = -1, 
 				interacting = false, 
 				alpha = 0, 
-				betta = 0;
+				betta = 0,
+				ball,
+				ballShadow,
+				ballShadowMaterial, 
+				ballX = 0, 
+				ballY = 0,
+				step = 0;
+// API 
+			function openConnection() {
+				const websocket_url = `wss://${SDDP_WEBSOCKET_DOMAIN_NAME}/football/${this.fixture_uuid}/${
+				this.feed_name
+				}${this.getQueryString()}`;
 
+				this.connection = new WebSocket(websocket_url);
+				this.connection.onopen = (event) => this.onOpen(event);
+				this.connection.onmessage = (event) => this.onMessage(event);
+			}
+
+			function getQueryString() {
+				return this.query_string ? `?${this.query_string}` : '';
+			}
+
+			function onOpen(_event) {
+				this.connection.send(
+				JSON.stringify({
+					authToken: $.AppSettings.outlet_key
+				})
+				);
+
+				// exponential backoff with retry process implementation
+				// https://docs.performgroup.com/docs/data/push/tennis/tennis-sddp-integration-guide-wta.htm#websocket-disconnected-from-feed
+				this.runConnectionCheck();
+			};
+
+			function onMessage(event) {
+				const message = JSON.parse(event.data);
+
+				//this.handleMessageType(message);
+			};
+
+///// MOUSE
 			// Functions
 			function catchEvents(){
 				container.addEventListener('mousedown', onMouseDown, false);
@@ -66,11 +110,15 @@
 			function onMouseDown(event) {
 				event.preventDefault();
 
+				if (blocked) {
+					return;
+				}
+
 				interacting = true;
-				if (xStart < 0){ // only for initial drag
+				//if (xStart < 0){ // only for initial drag
 					xStart = event.clientX;
 					yStart = event.clientY;
-				}
+				
 			}
 
 			function onMouseMove(event) {
@@ -81,7 +129,7 @@
 					const y = yStart - event.clientY;
 				
 					betta += x/10;
-					alpha -= y/2;
+					alpha -= y/4;
 				}
 			}	
 
@@ -89,13 +137,13 @@
 				event.preventDefault();
 				interacting = false;
 			}
-
+// WEBGL
 			function loadTexture(fileName){
 				return loader.load(imgPath+fileName);
 			}	
 
 			function createScene(){	
-				camera.position.set(300, 00, -0);
+				camera.position.set(300 + faraway, 00, -0);
 				camera.up = new THREE.Vector3(0,1,0);
 				camera.lookAt(new THREE.Vector3(00,00,0));
 
@@ -111,12 +159,11 @@
 				const pitchGeometry = new THREE.PlaneGeometry( 600, 338 );
 				const pitchMaterial = new THREE.MeshBasicMaterial(); 
 				pitchMaterial.map = loadTexture('pitch.jpg');
-				var pitch = new THREE.Mesh( pitchGeometry, pitchMaterial );
+				const pitch = new THREE.Mesh( pitchGeometry, pitchMaterial );
 				pitch.position.set(-100, -150, -0); 
 				pitch.rotation.x = -Math.PI / 2;
 				pitch.rotation.z = -Math.PI / 2;	
-				scene.add( pitch );	
-
+				scene.add(pitch);	
 
 				const bordersGeometry = new THREE.BoxGeometry( 600, 338, 40 );
 				const bordersMaterial = new THREE.MeshBasicMaterial(); 
@@ -126,44 +173,103 @@
 				bordersMaterial.wrapS = THREE.RepeatWrapping;
 				bordersMaterial.wrapT = THREE.RepeatWrapping;
 				bordersMaterial.repeat =  4;
-				borders.position.set(-100, -131, -0); 
-				borders.rotation.x = -Math.PI / 2;
-				borders.rotation.z = -Math.PI / 2;		
+				borders.position.set(-100, -131, 0); 
+				borders.rotation.x = Math.PI / 2;
+				borders.rotation.z = Math.PI / 2;		
 				scene.add(borders);
-			}
 
-			function applyChanges(){
-				// apply limits
-				betta = Math.min(60, Math.max( betta, -60));
-				alpha = Math.min(399, Math.max( alpha, -10));
+				const ballGeometry = new THREE.SphereGeometry( 6, 16, 16 );
+				const ballMaterial = new THREE.MeshBasicMaterial(); 
+				ballMaterial.map = loadTexture('ball.jpg');
+				ball = new THREE.Mesh( ballGeometry, ballMaterial );
+				ball.position.set(-100, -144, 0); 
+				scene.add(ball);	
 
-				//magnet
-				if (Math.abs(betta) < 15){
-					betta =0;
-				}
 
-				// rotate
-				camera.position.set(300 - alpha, alpha>>2, betta * (399-alpha)/300);	
-				camera.up = new THREE.Vector3(0,1,0);
-				camera.lookAt(new THREE.Vector3(-alpha/4, 0, 0));
+				const ballShadowGeometry = new THREE.PlaneGeometry(30, 30);
+				ballShadowMaterial = new THREE.MeshBasicMaterial(); 
+				ballShadowMaterial.map = loadTexture('ball_shadow.png');
+				ballShadowMaterial.transparent = true;
+				ballShadow = new THREE.Mesh( ballShadowGeometry, ballShadowMaterial );
+				ballShadow.position.set(-100, -149, -0); 
+				ballShadow.rotation.x = -Math.PI / 2;
+				ballShadow.rotation.z = -Math.PI / 2;	
+				scene.add(ballShadow);	
 			}
 
 			function render () {
-			const clock = new THREE.Clock(),
-					delta = clock.getDelta(); 	 
-
 				renderer.render(scene, camera);
-			}	
+			};	
+/// main
+			function setRandomBallPosition() {
+				steps = 10 + ((Math.random()*20) >> 1),
+				ballTargetX = Math.random()*320,
+				ballTargetY = Math.random()*620;
+				step = 1;
+				setTimeout(setRandomBallPosition, Math.random()*2000 + 500);
+			}
+
+			function applyChanges(){
+				const clock = new THREE.Clock(),
+				delta = clock.getDelta(); 	 
+
+				if (blocked) { // intro animation
+					camera.position.set(300 + faraway, 00, -0);
+					faraway -= 5;
+					if (faraway == 0)
+					blocked = false;
+				}
+
+				else {
+					// ball
+					if (step && step < steps){
+						const x = ballX + (ballTargetX - ballX) * step / steps;
+						const y = ballY + (ballTargetY - ballY) * step / steps;
+						const maxH = steps >> 1;
+						let h =maxH - Math.abs(step - maxH);
+
+						ball.position.set(-264 + x , -144 + h, y - 330); 
+						ballShadow.position.set(-264 + x , -149, y - 330); 
+						ballShadowMaterial.opacity = (1- h/maxH);
+
+						step++;
+					} else if (step === steps){ // reset
+						step = 0;
+						ballX = ballTargetX;
+						ballY = ballTargetY;
+					}
+
+						ball.rotation.z += .2;	
+						ball.rotation.y += .3;	
+					// Camera
+					// apply limits
+					betta = Math.min(60, Math.max( betta, -60));
+					alpha = Math.min(399, Math.max( alpha, -60));
+
+					//magnet
+					if (Math.abs(betta) < 15){
+						betta =0;
+					}
+
+					// rotate
+					camera.position.set(300 - alpha, alpha>>2, betta * (399-alpha)/300);	
+					camera.up = new THREE.Vector3(0,1,0);
+					camera.lookAt(new THREE.Vector3(-alpha/4, 0, 0));
+				}
+			};
+
+	
 
 			function update()   // Main cycle Resident funct
 			{
 				applyChanges();
 				render(); 
 				window.requestAnimationFrame(update);
-			}	
+			};
 
 			createScene();
 			catchEvents();
+			setRandomBallPosition();
 			update();
 		}
 	</script>
