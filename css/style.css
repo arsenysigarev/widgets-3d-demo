@@ -1,4 +1,23 @@
 #webgl {
+    position: absolute;
     width: 600px;
-    height: 400px;
+    height: auto;
+    max-width: 100%;
+}
+
+#webgl > canvas {
+    top: 0px;
+    left: 0px;
+    max-width: 100%;
+    z-index: 1;
+}
+
+#webgl_canvas {
+    background: black;
+    max-width: 100%;
+    z-index: 0;
+}
+
+#interface_canvas {
+    z-index: 10;
 }
